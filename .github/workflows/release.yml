@@ -1,3 +1,70 @@
+name: Detectar release via tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  detectar-nova-versao:
+    name: Detectar nova versão
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up job
+        run: echo "Iniciando job de detecção de versão"
+
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # necessario para obter tags e histórico completo
+
+      - name: Mostrar referência completa
+        run: echo "GITHUB_REF=$GITHUB_REF"
+
+      - name: Mostrar nome simplificado da tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            echo "TAG_NAME=$TAG_NAME"
+            echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "Este evento não é um push de tag: $GITHUB_REF"
+          fi
+
+      - name: Exemplo - gerar log da versão
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Buscando tags"
+          git fetch --tags
+
+          # tenta descobrir a tag anterior; se não houver, gera log dos últimos 50 commits
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)
+          echo "Previous tag: $PREV_TAG"
+
+          if [[ -n "$PREV_TAG" ]]; then
+            git log --pretty=format:"%h %s" "$PREV_TAG"..HEAD > release_log.txt || true
+          else
+            git log --pretty=format:"%h %s" --max-count=50 HEAD > release_log.txt || true
+          fi
+
+          echo "==== Release log start ===="
+          cat release_log.txt || true
+          echo "==== Release log end ===="
+
+          # exporta o log para GITHUB_OUTPUT para que possa ser usado por outros steps ou jobs
+          echo "release_log<<EOF" >> "$GITHUB_OUTPUT"
+          cat release_log.txt >> "$GITHUB_OUTPUT" || true
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Post Checkout do repositório
+        if: always()
+        run: echo "Finalizado passo post-checkout"
+
+      - name: Complete job
+        if: always()
+        run: echo "Detectar nova versão concluído"
 name: CI
 
 on:
